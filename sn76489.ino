@@ -1,38 +1,40 @@
-#include "eurotools.h"
+#include "eurotools-v2.h"
 #include "update_sn_code.h"
 #include "write_sn_code.h"
 
-// set up all PINS for the interface
+// set up pin config
 int PIN_CV_TONE = A4;
 int PIN_POT_TONE = A1;
 int PIN_CV_VOLUME = A3;
 int PIN_POT_VOLUME = A0;
 int PIN_GLITCH = 7;
 
-// set constants based on hardware
+// set up hardware constants
 int REVERSE_GLITCH = true; // set true depends on orientation of switch
 int REVERSE_POT = true; // set true if clockwise increases resistance
 int R1_VALUE = 220;
 int R2_VALUE = 150;
 
-// initialize a few values
+// set up to read tone CV and compute Hz
+long incoming_cv_tone = 0;
+int tone_history[8];
 long Hz = 0;
 long Hz_old = 0;
-long Hz_raw = 0;
+int Hz_knob_pct;
+float Hz_offset;
+
+// set up to read volume CV
+int incoming_cv_volume = 0;
 int volume = 0;
 int volume_old = 0;
-int volume_raw = 0;
+int volume_knob_pct;
+int volume_offset;
+
+// set up to read glitch switch
 bool glitch_switch_active = false;
 bool glitch_old = false;
-long incoming_cv_tone = 0;
-int incoming_cv_volume = 0;
 
-// manage tone history to smooth out tone CV readings
-int tone_history_size = 8;
-int tone_history_limit = tone_history_size - 1;
-int tone_history[8];
-
-// console print
+// toggle debug
 bool debug = false;
 
 void setup() {
@@ -57,7 +59,11 @@ void setup() {
   pinMode(PIN_POT_TONE, INPUT);
   pinMode(PIN_CV_VOLUME, INPUT);
   pinMode(PIN_POT_VOLUME, INPUT);
-  pinMode(PIN_GLITCH, INPUT);
+  pinMode(PIN_GLITCH, INPUT_PULLUP);
+
+  //////////////////////////////////////////////////////////////////
+  ///// SEND THE INTERNAL CLOCK OUT (NANO EVERY ONLY)
+  //////////////////////////////////////////////////////////////////
 
   // LUT0 is the D input, which is connected to the flipflop output
   CCL.LUT0CTRLB = CCL_INSEL0_FEEDBACK_gc; // Input from sequencer
@@ -70,7 +76,10 @@ void setup() {
   CCL.LUT1CTRLA = CCL_ENABLE_bm; // Turn on LUT1
   CCL.CTRLA = 1; // Enable the CCL
 
-  // shut off channel 2 & 3 on start up
+  //////////////////////////////////////////////////////////////////
+  ///// SHUT OFF CHANNELS 2 & 3
+  //////////////////////////////////////////////////////////////////
+  
   update_sn_code(data, 0, true, false, debug); // force write 0 volume to tone channel
   write_sn_code(data); // clear channel 1
   data[1] = 0;
@@ -86,21 +95,25 @@ void setup() {
 
 void loop() {
 
+  //////////////////////////////////////////////////////////////////
+  ///// READ TONE CV
+  //////////////////////////////////////////////////////////////////
+
   // Arduino does not have enough precision to read CV for tone accurately
-  // so the program will remember the last 16 CV values and use the
+  // so the program will remember the last 8 CV values and use the
   // the average to make the output frequency
   // Increasing the memory bank of CV values will increase precision
   // but will increase "glide" as you change between notes
-  Hz_old = Hz;
-  for(int i = 0; i < tone_history_limit; i++){ // move tone history back one step
-    tone_history[i] = tone_history[i+1];
-  }
-  tone_history[tone_history_limit] = read_analog_mV(PIN_CV_TONE, R1_VALUE, R2_VALUE); // update tone history with new value
-  incoming_cv_tone = 0;
-  for(int i = 0; i < tone_history_size; i++){ // calculate grand sum of tone history
-    incoming_cv_tone = incoming_cv_tone + tone_history[i];
-  }
-  incoming_cv_tone = incoming_cv_tone / tone_history_size;
+  incoming_cv_tone = read_analog_mV_smooth(PIN_CV_TONE, tone_history, R1_VALUE, R2_VALUE, debug);
+
+  //////////////////////////////////////////////////////////////////
+  ///// READ GLITCH SWITCH
+  //////////////////////////////////////////////////////////////////
+
+  // DECIDE WHETHER TO WRITE TO NOISE OR TONE REGISTER
+  glitch_old = glitch_switch_active;
+  glitch_switch_active = digitalRead(PIN_GLITCH);
+  if(REVERSE_GLITCH) glitch_switch_active = !glitch_switch_active;
 
   // this keeps the glitch switch sounding funky even when no tone CV cable is plugged in
   // it forces the program to treat small voltage readings as true zero
@@ -110,37 +123,42 @@ void loop() {
     }
   }
 
+  //////////////////////////////////////////////////////////////////
+  ///// PROCESS TONE CV TO HERTZ
+  //////////////////////////////////////////////////////////////////
+
   // by default, program will have tune knob fine tune +/- about 1 semitone
   // but you can change this to coarse tune +/- 1 octave instead
+  Hz_old = Hz;
   if(true){
     // READ IN CONTROL VOLTAGE FOR SYNTH PITCH -- FINE TUNE
-    Hz_raw = mV_to_Hz(incoming_cv_tone, 256); // 256 is lowest note with 8 MHz clock, for 0V and tone_offset = 1
-    int tone_knob_pct = read_analog_pct(PIN_POT_TONE, 3300);
-    float tone_offset = pct_as_base2_offset(tone_knob_pct, 1, 1, REVERSE_POT);
-    Hz = Hz_raw * power_float(tone_offset, .1); // moves Hz +/- less than one octave
+    Hz = mV_to_Hz(incoming_cv_tone, 256); // 256 is lowest note with 8 MHz clock, for 0V and Hz_offset = 1
+    Hz_knob_pct = read_analog_pct(PIN_POT_TONE, 3300, REVERSE_POT, 0, 0, debug);
+    Hz_offset = pct_as_base2_offset(Hz_knob_pct, 1, 1);
+    Hz = Hz * power_float(Hz_offset, .1); // moves Hz +/- less than one octave
   }else{
     // READ IN CONTROL VOLTAGE FOR SYNTH PITCH -- COARSE TUNE
-    Hz_raw = mV_to_Hz(incoming_cv_tone, 256); // 256 is lowest note with 8 MHz clock, for 0V and tone_offset = 1
-    int tone_knob_pct = read_analog_pct(PIN_POT_TONE, 3300);
-    float tone_offset = pct_as_base2_offset(tone_knob_pct, 1, 1, REVERSE_POT);
-    Hz = Hz_raw * tone_offset; // moves Hz +/- one octave
+    Hz = mV_to_Hz(incoming_cv_tone, 256); // 256 is lowest note with 8 MHz clock, for 0V and Hz_offset = 1
+    Hz_knob_pct = read_analog_pct(PIN_POT_TONE, 3300, REVERSE_POT, 0, 0, debug);
+    Hz_offset = pct_as_base2_offset(Hz_knob_pct, 1, 1);
+    Hz = Hz * Hz_offset; // moves Hz +/- one octave
   }
+
+  //////////////////////////////////////////////////////////////////
+  ///// PROCESS VOLUME CV
+  //////////////////////////////////////////////////////////////////
 
   // READ IN CONTROL VOLTAGE FOR SYNTH VOLUME
   volume_old = volume;
-  incoming_cv_volume = read_analog_mV(PIN_CV_VOLUME, R1_VALUE, R2_VALUE);
-  volume_raw = mV_to_integer(incoming_cv_volume, 32);
-  int volume_knob_pct = read_analog_pct(PIN_POT_VOLUME, 3300);
-  int volume_offset = pct_as_decimal_offset(volume_knob_pct, 32, REVERSE_POT);
-  volume = clip_integer(volume_raw + volume_offset - 1, 0, 31); // ranges from 0 to 31
-
-  // DECIDE WHETHER TO WRITE TO NOISE OR TONE REGISTER
-  glitch_old = glitch_switch_active;
-  glitch_switch_active = digitalRead(PIN_GLITCH);
-  if(REVERSE_GLITCH) glitch_switch_active = !glitch_switch_active;
-
+  incoming_cv_volume = read_analog_mV(PIN_CV_VOLUME, R1_VALUE, R2_VALUE, debug);
+  volume = mV_to_integer(incoming_cv_volume, 32);
+  volume_knob_pct = read_analog_pct(PIN_POT_VOLUME, 3300, REVERSE_POT, 0, 0, debug);
+  volume_offset = pct_as_decimal_offset(volume_knob_pct, 32);
+  volume = clip_integer(volume + volume_offset - 1, 0, 31); // ranges from 0 to 31
+  
   // debug print...
   if(debug){
+    Serial.println ("Current Write instructions...");
     Serial.print ("Tone: ");
     Serial.println (Hz);
     Serial.print ("Volume: ");
@@ -148,6 +166,10 @@ void loop() {
     Serial.print ("Glitch: ");
     Serial.println (glitch_switch_active);
   }
+
+  //////////////////////////////////////////////////////////////////
+  ///// SWITCH CHANNELS BY SILENCING OTHER
+  //////////////////////////////////////////////////////////////////
 
   // WHEN REGISTER CHANGES, SET ALL REGISTER VOLUMES TO 0
   if(glitch_switch_active != glitch_old){
@@ -158,6 +180,10 @@ void loop() {
     Hz_old = 0; // reset to force update
     volume_old = 0; // reset to force update
   }
+
+  //////////////////////////////////////////////////////////////////
+  ///// WRITE OUTPUT
+  //////////////////////////////////////////////////////////////////
 
   // WRITE NEW TONE IF TONE HAS CHANGED
   if(Hz != Hz_old){
