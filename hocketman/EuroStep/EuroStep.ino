@@ -1,8 +1,5 @@
-#include "Timer.h"
-#include "Envelope.h"
-#include "Playback.h"
-#include "Predelay.h"
-#include "Quantiser.h"
+#include "hardware/rasa6-do.h"
+#include "EuroStep.h"
 
 void setup() {
   // put your setup code here, to run once:

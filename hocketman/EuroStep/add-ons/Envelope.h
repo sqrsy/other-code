@@ -7,7 +7,7 @@ Dependencies: This class inherits from the Timer class.
 
 Use: Create an instance of the class and configure settings, then run:
 -- advance_envelope(): advances the timer to update the current envelope size
--- get_envelope_size(): returns the current envelope size (in mV)
+-- get_current_value(): returns the current envelope size (in mV)
 
 You will also need to trigger the envelope:
 -- turn_on_gate(): triggers the attack stage and enables sustain
@@ -45,7 +45,7 @@ private:
   int current_limit;  // which limit is active
 
   // the current size of envelope to send to analog out
-  int current_size;
+  int current_value;
 
   // how fast to make each stage (in time units waited before changing envelope by 1%)
   int ADSR_rate[4] = { -1, -1, -1, -1 };
@@ -59,8 +59,13 @@ public:
   /// Getters and setters
   ///////////////////////////////////////////////////////////////////////////////
 
-  int get_envelope_size() {
-    return current_size;
+  int get_current_value() {
+    return current_value;
+  }
+
+  double get_current_value_as_percent() {
+    double as_pct = 1.0 * current_value / delta_limit;
+    return as_pct;
   }
 
   void set_envelope_limits(int min = 0, int max = 4000) {
@@ -89,7 +94,7 @@ public:
 
     // if last ADSR was interrupted,
     // safely end last ADSR as part of new attack
-    if (current_size > min_limit) {
+    if (current_value > min_limit) {
       ADSR_was_interrupted = true;
     }
 
@@ -118,10 +123,10 @@ public:
 
     // end ADSR wherever it is, quickly but not instantly
     // no need for timer, want this to happen fast!
-    current_size -= 0.15 * delta_limit;
+    current_value -= 0.15 * delta_limit;
 
-    if (current_size <= min_limit) {
-      current_size = min_limit;
+    if (current_value <= min_limit) {
+      current_value = min_limit;
       ADSR_was_interrupted = false;
     }
   }
@@ -129,9 +134,9 @@ public:
   void continue_attack_as_normal() {
 
     if (get_timer() > ADSR_rate[0]) {
-      current_size += .01 * ADSR_step[0] * delta_limit;
-      if (current_size >= max_limit) {
-        current_size = max_limit;
+      current_value += .01 * ADSR_step[0] * delta_limit;
+      if (current_value >= max_limit) {
+        current_value = max_limit;
         ADSR_progress[0] = false;
         ADSR_progress[1] = true;  // decay begins
         ADSR_progress[2] = false;
@@ -157,9 +162,9 @@ public:
   void decay() {
 
     if (get_timer() > ADSR_rate[1]) {
-      current_size -= .01 * ADSR_step[1] * delta_limit;
-      if (current_size <= sustain_level) {
-        current_size = sustain_level;  // use whatever sustain is set when decay ends
+      current_value -= .01 * ADSR_step[1] * delta_limit;
+      if (current_value <= sustain_level) {
+        current_value = sustain_level;  // use whatever sustain is set when decay ends
         ADSR_progress[0] = false;
         ADSR_progress[1] = false;
         ADSR_progress[2] = true;  // sustain begins
@@ -181,9 +186,9 @@ public:
   void release() {
 
     if (get_timer() > ADSR_rate[3]) {
-      current_size -= .01 * ADSR_step[3] * delta_limit;
-      if (current_size <= min_limit) {
-        current_size = min_limit;
+      current_value -= .01 * ADSR_step[3] * delta_limit;
+      if (current_value <= min_limit) {
+        current_value = min_limit;
         ADSR_progress[0] = false;
         ADSR_progress[1] = false;
         ADSR_progress[2] = false;

@@ -10,6 +10,7 @@ Use: Create an instance of the class and configure settings, then run:
 -- reset_timer(): resets the timer to 0
 
 You may wish to configure the following settings:
+-- offset_timer(int value): resets the timer but adds an extra time delay once
 -- use_millis(): use milliseconds for the timer (default)
 -- use_micros(): use microseconds for the timer
 */
@@ -21,7 +22,19 @@ private:
   bool time_in_micros = false;
   unsigned long last_timer = 0;
 
+  unsigned long time_right_now() {
+    if (time_in_micros) {
+      return micros();
+    } else {
+      return millis();
+    }
+  }
+
 public:
+
+  ///////////////////////////////////////////////////////////////////////////////
+  /// Set up the Timer
+  ///////////////////////////////////////////////////////////////////////////////
 
   void use_micros() {
     time_in_micros = true;
@@ -31,13 +44,9 @@ public:
     time_in_micros = false;
   }
 
-  unsigned long time_right_now() {
-    if (time_in_micros) {
-      return micros();
-    } else {
-      return millis();
-    }
-  }
+  ///////////////////////////////////////////////////////////////////////////////
+  /// Use the Timer
+  ///////////////////////////////////////////////////////////////////////////////
 
   unsigned long get_timer() {
     if (time_right_now() < last_timer) reset_timer();  // overflow catch
@@ -46,5 +55,13 @@ public:
 
   void reset_timer() {
     last_timer = time_right_now();
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////
+  /// Customise the Timer
+  ///////////////////////////////////////////////////////////////////////////////
+
+  void offset_timer(int value) {
+    last_timer = time_right_now() + value;
   }
 };

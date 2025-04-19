@@ -26,6 +26,9 @@ You may wish to configure the following settings:
 -- set_playback_step(value): set the size of each step change for Playback
 -- set_start_position(value): change the start position for Playback
 
+You can also play wavetables at a specific pitch:
+-- set_playback_rate_from_Hz(Hz, values_per_cycle): for pitch in Hz
+
 The following settings are relevant from the Timer class:
 -- use_millis(): use milliseconds as the time units for the set_ADSR_rate (default)
 -- use_micros(): use microseconds as the time units for the set_ADSR_rate
@@ -42,7 +45,7 @@ private:
   int playback_step = 1;
 
   // load a reference "file" to sample
-  short* audio;
+  byte* audio;
   int audio_length = 0;
 
   // the position along the playback reference file
@@ -52,8 +55,14 @@ private:
 
   // other args
   bool now_restarting_safely = false;  // protect from interruption
+  int safe_restart_increment = 16;
   bool pause = false;
   bool loop = false;
+
+  void loop_now() {
+    rewind_playback();
+    unpause_playback();
+  }
 
 public:
 
@@ -65,13 +74,20 @@ public:
     playback_rate = value;
   }
 
+  // alternative playback rate to play wavetables at a specific pitch
+  void set_playback_rate_from_Hz(int Hz, int values_per_cycle) {
+    use_micros();  // force use micro-seconds
+    playback_rate = map_Hz_to_micros(Hz) / values_per_cycle;
+  }
+
   void set_playback_step(int value) {
     playback_step = value;
   }
 
-  void set_audio(int* audio_array, int audio_array_length) {
+  void set_audio(byte* audio_array, int audio_array_length) {
     audio = audio_array;  // just point to new file, which will already live in RAM
     audio_length = audio_array_length;
+    safe_restart_increment = 16;  // tested for sample values 0-255
   }
 
   void set_start_position(int value) {
@@ -80,6 +96,10 @@ public:
 
   int get_current_value() {
     return current_value;
+  }
+
+  bool is_restarting_safely() {
+    return now_restarting_safely;
   }
 
   ~Playback() {
@@ -122,13 +142,15 @@ public:
     // end Playback wherever it is, quickly but not instantly
     // no need for timer, want this to happen fast!
     if (current_value >= 0) {  // if current value is positive, decrease it
-      current_value -= 250;
-      if (current_value <= 0) {  // if now at zero
+      current_value -= safe_restart_increment;
+      if (current_value <= 0) {  // if close to zero
+        current_value = 0;
         now_restarting_safely = false;
       }
     } else {  // if current value is negative, increase it
-      current_value += 250;
-      if (current_value >= 0) {  // if now at zero
+      current_value += safe_restart_increment;
+      if (current_value >= 0) {  // if close to zero
+        current_value = 0;
         now_restarting_safely = false;
       }
     }
@@ -136,8 +158,8 @@ public:
 
   void continue_playback() {
     if (get_timer() > playback_rate) {
-      current_position += 1;
       current_value = audio[current_position];
+      current_position += 1;  // increment after
       reset_timer();
     }
   }
@@ -157,13 +179,14 @@ public:
       if (now_restarting_safely) {
         stop_playback_safely();
       } else {
-        continue_playback();
         if (current_position >= audio_length) {  // prevent overflow
           if (loop) {
-            restart_playback();
+            loop_now();
           } else {
             rewind_playback();
           }
+        } else {
+          continue_playback();  // remember audio[audio_length] is an overflow!
         }
       }
     }

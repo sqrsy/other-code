@@ -4,6 +4,15 @@ This repository contains code for select modules available in the modules reposi
 
 # Programs
 
+* hocketman:
+	* Author: sqrsy
+	* Purpose: Route incoming gate and CV based on pitch.
+	* Jack 1: Gate in.
+	* Jack 2: CV in.
+	* Switches 1-12: Set scale used to hocket input left or right.
+	* Jacks 3 & 4: Gate out (left or right based on switch position).
+	* Jacks 5 & 6: CV out (left or right based on switch position).
+
 * quantiser:
 	* Author: sqrsy
 	* Purpose: Dual quantiser with scale controlled by switches.
@@ -12,7 +21,7 @@ This repository contains code for select modules available in the modules reposi
 	* Switches 1-12: Set scale used to quantise input.
 	* Jacks 3 & 4: Quantised output.
 
-* sn76489
+* sn76489:
 	* Author: sqrsy
 	* Purpose: Provide CV interface to SN76489 chip.
 	* Jack 1: Input CV for VCO, converted to chip instructions.

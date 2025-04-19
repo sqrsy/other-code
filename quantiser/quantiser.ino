@@ -1,8 +1,8 @@
 #include "EuroStep/hardware/quantiser.h"
 #include "EuroStep/EuroStep.h"
-#include "EuroStep/modules/Quantiser.h"
+#include "EuroStep/add-ons/Quantiser.h"
 
-class make_Quantizer : public EuroStep::EuroStep {
+class make_quantiser : public EuroStep::EuroStep {
 public:
 
   // Instantiate the Quantizer class
@@ -34,29 +34,25 @@ public:
     transpose_mV_B = pot_values[1] * 10;
 
     // pass incoming voltage to quantiser A
-    transposed_input_A = input_values[0] + transpose_mV_A;
+    transposed_input_A = jack_values[0] + transpose_mV_A;
     quantiser_A.run(transposed_input_A);
     output_A = quantiser_A.get_quantised_cv();
 
     // pass incoming voltage to quantiser B
-    transposed_input_B = input_values[1] + transpose_mV_B;
+    transposed_input_B = jack_values[1] + transpose_mV_B;
     quantiser_B.run(transposed_input_B);
     output_B = quantiser_B.get_quantised_cv();
 
     // get outgoing voltage
-    send_to_output(1, output_A);  // mismatch between input and output jacks
-    send_to_output(0, output_B);
+    output_value_to_dac(0, output_A);  // mismatch between input and output jacks
+    output_value_to_dac(1, output_B);
   }
 };
 
-make_Quantizer module;
+make_quantiser module;
 void setup() {
-  module.input_mode_is_analog[0] = true;
-  module.input_mode_is_analog[1] = true;
-  module.output_mode_is_analog[0] = true;  // send output 0 to DAC
-  module.output_mode_is_analog[1] = true;  // send output 1 to DAC
-  module.debug = false;                    // toggle debug
-  module.start();                          // required to initialise pins
+  module.set_debug(false);  // toggle debug
+  module.start();           // required to initialise pins
 }
 
 void loop() {

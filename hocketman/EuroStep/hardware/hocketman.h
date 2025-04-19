@@ -10,19 +10,19 @@
 #define PINS_JACK \
   { A5, A4 }
 
-#define NUMBER_OF_POTS 2
+#define NUMBER_OF_POTS 0
 #define MAX_POT_VOLTAGE 4900
 #define REVERSE_POT true
 #define PINS_POT \
-  { A6, A7 }
+  {}
 
 #define NUMBER_OF_SWITCHES 12
 #define PINS_SWITCH \
   { 2, A0, A1, A3, A2, 12, 11, 10, 9, 8, 7, 6 }
 
-#define NUMBER_OF_DIGITAL_OUTPUTS 0
+#define NUMBER_OF_DIGITAL_OUTPUTS 2
 #define PINS_DIGITAL_OUTPUT \
-  {}
+  { A6, A7 }
 #define PINS_DAC_A \
   { 13, 3, 4, 5 }
 #define PINS_DAC_B \
